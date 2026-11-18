@@ -13,8 +13,10 @@
 //
 // Rules (all decisions on a bar's close, filled at the next bar's open):
 // - Entry: not holding, not warming up, and the W-minute return of the latest
-//   close is >= T bps. Buy with all free cash (capped by max_weight_bps and
-//   the minimum notional).
+//   close is >= T bps, with the latest 1-minute bar still up (confirmation):
+//   a W-minute return can stay positive for minutes after the spike already
+//   reversed, and buying that leftover is buying a dead move. Buy with all
+//   free cash (capped by max_weight_bps and the minimum notional).
 // - Exit: holding, sell the whole position when its gain is >= TP bps above
 //   cost, or <= -SL bps below cost.
 // - One symbol (CBBTC), one position at a time, full size per trade.
@@ -59,6 +61,10 @@ await runBars({
     const then = closes[closes.length - 1 - WINDOW_BARS];
     const retBps = ((now - then) * 10000n) / then;
     if (retBps < BigInt(ENTRY_BPS)) return [];
+    // Confirmation: the spike must still be alive in the latest bar, not
+    // just a leftover of a move that already rolled off the window.
+    const prev = closes[closes.length - 2];
+    if (now < prev) return [];
     const room = state.weightRoom(SYMBOL);
     let spend = state.cash < room ? state.cash : room;
     if (spend <= 0n || spend < BigInt(state.hello.fees.min_notional_quote_units)) return [];
